@@ -127,4 +127,4 @@ Visit [support.leankit.com](http://support.leankit.com).
 
 ### License
 
-The LeanKit Node Client is licensed under [MIT](http://www.opensource.org/licenses/mit-license.php). Refer to [license.txt](https://github.com/LeanKit/leankit-node-client/blob/master/License.txt) for more information.
+The LeanKit Events module is licensed under [MIT](http://www.opensource.org/licenses/mit-license.php). Refer to the [license](https://github.com/LeanKit/leankit-node-events/blob/master/LICENSE) for more information.

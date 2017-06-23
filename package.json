@@ -1,6 +1,6 @@
 {
   "name": "leankit-events",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Node.js client for subscribing to LeanKit board events",
   "main": "src/index.js",
   "engines": {
@@ -34,7 +34,7 @@
   "bugs": {
     "url": "https://github.com/leankit/leankit-node-events/issues"
   },
-  "homepage": "https://github.com/leankit/leankit-node-events#readme",
+  "homepage": "https://github.com/leankit/leankit-node-events",
   "keywords": [
     "leankit",
     "api",
