@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-const LeanKitClient = require( "leankit-client" );
+const leanKitClient = require( "leankit-client" );
 const EventEmitter = require( "events" ).EventEmitter;
 const changeCase = require( "change-case" );
 const MS = 1000;
@@ -21,7 +21,7 @@ module.exports = class LeanKitNotifier extends EventEmitter {
 	constructor( { account, email, password, options }, boardId, version = 0, pollInterval = DEFAULT_POLL_INTERVAL, resumeAfterError = true ) {
 		super();
 		this.timer = 0;
-		this.client = new LeanKitClient( account, email, password, options );
+		this.client = leanKitClient( { account, email, password, config: options } );
 		this.boardId = boardId;
 		this.version = version;
 		this.pollInterval = pollInterval;
@@ -39,59 +39,69 @@ module.exports = class LeanKitNotifier extends EventEmitter {
 		return this.timer;
 	}
 
+	setBoardVersion( boardRes ) {
+		super.emit( "debug", `current board version: ${ boardRes.data.Version }` );
+		this.version = boardRes.data.Version;
+		this.getUpdates();
+	}
+
+	emitEvents( events ) {
+		super.emit( "debug", `events: ${ events.length }` );
+		if ( events && events.length > 0 ) {
+			events.forEach( e => {
+				super.emit( e.eventType, e );
+			} );
+		}
+		this.scheduleNextPoll();
+	}
+
+	eventError( err ) {
+		super.emit( "error", err );
+		if ( this.resumeAfterError ) {
+			this.scheduleNextPoll();
+		}
+	}
+
+	processEventResponse( res ) {
+		const events = [];
+		const data = res.data;
+		super.emit( "debug", `client.getBoardUpdates, hasUpdates: ${ data.HasUpdates }` );
+		if ( data.HasUpdates ) {
+			super.emit( "debug", `client.getBoardUpdates, events: ${ data.Events.length }` );
+			this.version = data.CurrentBoardVersion;
+			data.Events.forEach( e => {
+				const n = camelClone( e );
+				n.boardVersion = this.version;
+				n.eventType = changeCase.param( e.EventType ).replace( "-event", "" );
+				if ( n.eventType === "board-edit" && data.NewPayload ) {
+					n.board = camelClone( data.NewPayload );
+				}
+				events.push( n );
+			} );
+		}
+		return events;
+	}
+
 	checkForUpdates() {
 		super.emit( "debug", "calling client.getBoardUpdates..." );
-		return this.client.getBoardUpdates( this.boardId, this.version ).then( res => {
-			const events = [];
-			super.emit( "debug", `client.getBoardUpdates, hasUpdates: ${ res.HasUpdates }` );
-			if ( res.HasUpdates ) {
-				super.emit( "debug", `client.getBoardUpdates, events: ${ res.Events.length }` );
-				this.version = res.CurrentBoardVersion;
-				res.Events.forEach( e => {
-					const n = camelClone( e );
-					n.boardVersion = this.version;
-					n.eventType = changeCase.param( e.EventType ).replace( "-event", "" );
-					if ( n.eventType === "board-edit" && res.NewPayload ) {
-						n.board = camelClone( res.NewPayload );
-					}
-					events.push( n );
-				} );
-			}
-			return events;
-		} );
+		return this.client.v1.board.since.version.updates( this.boardId, this.version )
+			.then( res => this.processEventResponse( res ) );
 	}
 
 	getUpdates() {
 		this.timer = 0;
 		if ( !this.version ) {
 			super.emit( "debug", "no board version specified, getting current board" );
-			this.client.getBoard( this.boardId ).then( board => {
-				super.emit( "debug", `current board version: ${ board.Version }` );
-				this.version = board.Version;
-				this.getUpdates();
-			}, err => {
-				super.emit( "error", err );
-				if ( this.resumeAfterError ) {
-					this.scheduleNextPoll();
-				}
-			} );
-		} else {
-			super.emit( "polling", { id: this.boardId, version: this.version } );
-			this.checkForUpdates().then( events => {
-				super.emit( "debug", `events: ${ events.length }` );
-				if ( events && events.length > 0 ) {
-					events.forEach( e => {
-						super.emit( e.eventType, e );
-					} );
-				}
-				this.scheduleNextPoll();
-			}, err => {
-				super.emit( "error", err );
-				if ( this.resumeAfterError ) {
-					this.scheduleNextPoll();
-				}
-			} );
+			this.client.v1.board.get( this.boardId )
+				.then( res => this.setBoardVersion( res ) )
+				.catch( err => this.eventError( err ) );
+			return null;
 		}
+		super.emit( "polling", { id: this.boardId, version: this.version } );
+		this.checkForUpdates()
+			.then( events => this.emitEvents( events ) )
+			.catch( err => this.eventError( err ) );
+		return null;
 	}
 
 	start() {

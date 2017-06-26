@@ -17,7 +17,7 @@ describe( "Events Tests", () => {
 		password: pwd
 	};
 	let events = {};
-	const url = "https://your-account-name.leankit.com:443"; // /leankit\.com/; // accountName.startsWith( "http" ) ? accountName : `https://${ accountName }.leankit.com`;
+	const url = /.*leankit\.com/gi; // "https://your-account-name.leankit.com:443"; // /leankit\.com/; // accountName.startsWith( "http" ) ? accountName : `https://${ accountName }.leankit.com`;
 	const boardId = 101;
 	const version = 1;
 
@@ -50,7 +50,12 @@ describe( "Events Tests", () => {
 		events.start();
 	};
 
-	const mockApiCall = function( mockResponseFile ) {
+	const mockApiCall = function( mockResponseFile, includeBoardRequest = true ) {
+		if ( includeBoardRequest ) {
+			nock( url, { encodedQueryParams: true } )
+				.get( "/kanban/api/boards/101" )
+				.reply( 200, { ReplyData: [ { Version: 1 } ] } );
+		}
 		const boardEvent = jetpack.read( mockResponseFile, "json" );
 		nock( url ).get( "/kanban/api/board/101/boardversion/1/checkforupdates" ).reply( 200, { ReplyCode: 200, ReplyData: [ boardEvent ] } );
 		nock( url ).get( "/kanban/api/board/101/boardversion/2/checkforupdates" ).reply( 200, { ReplyCode: 200, ReplyData: [ boardEvent ] } );
@@ -111,11 +116,19 @@ describe( "Events Tests", () => {
 		const eventType = "activity-types-changed";
 		const mockResponseFile = "./spec/test-files/activity-types-changed.json";
 		let boardScope = {};
+
 		before( done => {
+			// nock.recorder.rec();
+			nock.cleanAll();
 			nock.disableNetConnect();
 			events = new LeanKitEvents( auth, boardId );
-			mockApiCall( mockResponseFile );
-			boardScope = nock( url ).get( "/kanban/api/boards/101" ).reply( 200, { ReplyData: [ { Version: 1 } ] } );
+			events.on( "error", err => {
+				console.log( err );
+			} );
+			boardScope = nock( url, { encodedQueryParams: true } )
+				.get( "/kanban/api/boards/101" )
+				.reply( 200, { ReplyData: [ { Version: 1 } ] } );
+			mockApiCall( mockResponseFile, false );
 			done();
 		} );
 
@@ -125,12 +138,17 @@ describe( "Events Tests", () => {
 		} );
 
 		it( "gets the board to determine the latest board version", done => {
-			events.once( eventType, e => {
-				events.stop();
-				boardScope.isDone().should.equal( true );
+			try {
+				events.once( eventType, e => {
+					events.stop();
+					boardScope.isDone().should.equal( true );
+					done();
+				} );
+				events.start();
+			} catch ( err ) {
+				console.log( err );
 				done();
-			} );
-			events.start();
+			}
 		} );
 
 		it( "defaults to 30 seconds polling", () => {
